@@ -8,10 +8,11 @@
 #===========================================================================
 
 # todo add timer in this module
+# todo add more info in the mqtt message
 
 import cv2
 import os
-from MaintletConfig import experimentConfig, pathNameConfig, recordingConfig, deviceHeader, WiFiIP, HTTPPort
+from MaintletConfig import experimentConfig, pathNameConfig, recordingConfig, deviceHeader, WiFiIP, HTTPPort, alertSystemURL, safezoneDuration, trainDuration, MessageType, when2Alert, alertSystemEnable
 from MaintletLog import logger
 import numpy as np
 import scipy.io.wavfile as wav
@@ -24,8 +25,8 @@ from matplotlib.patches import Rectangle
 from MaintletNetworkManager import MaintletPayload
 from MaintletGainControl import gainControl, channelNames
 import requests
-alertSystemURL = f"http://10.193.199.26:8000/send-email"
-when2Alert = 5 #for test purpose
+
+
 ###############################
 ### some initialization
 ###############################
@@ -34,9 +35,9 @@ recordInterval = experimentConfig['recordInterval'] # unit s
 recordPeriod = recordInterval + recordFileDuration
 
 AS_period = recordPeriod
-safezone_duration = 20 * 60 # unit S
+safezone_duration = safezoneDuration # unit S
 safezone_AS_count = int(safezone_duration / AS_period)
-train_duration = 25 * 60 # unit S
+train_duration = trainDuration # unit S
 train_AS_count = int(train_duration / AS_period)
 step = 1
 safezone_check_step = 1 
@@ -90,6 +91,7 @@ class MaintletDataAnalysis:
         self.curFileName = ''
         self.rawDataToPlot = ''
         self.spectrogramToPlot = ''
+        self.channel = 0
         # for plots
         if isPlot:
             self.means_x = []
@@ -103,7 +105,7 @@ class MaintletDataAnalysis:
         self.curFilePath = filePath
         self.curFileName = filePath.split('/')[-1].split('.wav')[0]
         data, _ = librosa.load(filePath, sr=sr, mono=False)
-        dataCh1 = data[0, :]
+        dataCh1 = data[self.channel, :]
         self.rawDataToPlot = dataCh1
         return dataCh1    
 
@@ -228,7 +230,7 @@ class MaintletDataAnalysis:
 
         self.safezone_check_length = min(self.safezone_check_length+safezone_check_step, safezone_AS_count)
         isBuildSafezone = False if safezone_index < 0 else True
-        return curLabel, isBuildSafezone
+        return curLabel, isBuildSafezone 
 
     def _ewma(self, data):
         return pd.DataFrame(data).ewm(span=len(data)).mean().values.flatten()[-1]
@@ -383,62 +385,107 @@ class MaintletDataAnalysis:
         fig.savefig(imagePath, bbox_inches='tight')
         return imageName + '.png', f"http://{WiFiIP}:{HTTPPort}/{imagePath}", imagePath
 
+    def getTimeFromFileName(self, filename):
+        """sample file name: 03_06_2023_14_45_03_079359_e4:5f:01:5a:15:9c.wav"""
+        return filename.split(':')[0][:-3]
+
     def run(self, fileSystemToDataAnalysisQ, networkingOutQ):
         try:
             while True:
-                filePath = fileSystemToDataAnalysisQ.get()
+                filePath = fileSystemToDataAnalysisQ.get() # if there is no new file, we will block here
                 self.counter += 1
                 data = self._loadData(filePath=filePath)
-                # gain control
+                # get some basic analysis results
                 std, range, absMax = self._basicAnalysis(data=data)
-                channelName = channelNames[0]
+                # gain control
+                #channelName = channelNames[0]
                 #gainControl(absMax, channelName)
                 if experimentConfig['enableDataAnalysis']:
                     isBuildSafezone, anomalyScore, label = self._anomalyDetection(data=data)
-                    # networking
-                    if self.counter == when2Alert:
-                        # simulate we detect an error
-                        alertPayload = {}
+                    prevLabel = self.labels[-1] if len(self.labels) > 0 else 0
+                    tt = self.getTimeFromFileName(self.curFileName)
+                    payload = {}
+                    if when2Alert == -1:
+                        if prevLabel == 0 and label == 1:
+                            # send alert
+                            if alertSystemEnable:
+                                payload = self.prepareAlertPayload()
+                                networkingOutQ.put(payload)
 
-                        alertMeta = {}
-                        alertMeta['location'] = deviceHeader['location']
-                        alertMeta['model'] = deviceHeader['pumpModel']
-                        alertMeta['pumpHours'] = 10
-                        alertMeta['connectedTool'] = deviceHeader['connectedTool']
-                        alertPayload['metaData'] = alertMeta
-
-                        alertFiles = []
-                        #imageName, httpAddress, imageAddress = self._getSetupImageAddress()
-                        #tempEntry = ('images', (imageName, open(imageAddress, 'rb'),'application/octet-stream'))
-                        #tempEntry = ('images', (imageName, '1','application/octet-stream'))
-                        #alertFiles.append(tempEntry)
-                        imageName, httpAddress, imageAddress = self._getAnomalyScoreImageAddress()
-                        tempEntry = ('images', (imageName, open(imageAddress, 'rb'),'application/octet-stream'))
-                        #tempEntry = ('images', (imageName, '1','application/octet-stream'))
-                        alertFiles.append(tempEntry)
-                        imageName, httpAddress, imageAddress = self._getRawDataImageAddress()
-                        tempEntry = ('images', (imageName, open(imageAddress, 'rb'),'application/octet-stream'))
-                        #tempEntry = ('images', (imageName, '1','application/octet-stream'))
-                        alertFiles.append(tempEntry)
-                        imageName, httpAddress, imageAddress = self._getSpectrogramImageAddress()
-                        tempEntry = ('images', (imageName, open(imageAddress, 'rb'),'application/octet-stream'))
-                        #tempEntry = ('images', (imageName, '1','application/octet-stream'))
-                        alertFiles.append(tempEntry)
-                        alertPayload['files'] = alertFiles
-
-                        x = requests.request("POST", alertSystemURL, headers={}, data=alertPayload['metaData'], files=alertPayload['files'])
-                        #payload = MaintletPayload(topic='alert', format='dict', payload=alertPayload)
-                        #logger.warning(alertPayload)
+                        payload = self.preparePayload(std=std, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
                     else:
-                        analysisResult = {}
-                        analysisResult['std'] = str(round(std,3))
-                        analysisResult['range'] = str(round(range,3))
-                        analysisResult['anomalyScore'] = str(round(anomalyScore, 3))
-                        analysisResult['label'] = label
-                        analysisResult['buildSafezone'] = isBuildSafezone
-                        analysisResult['file'] = filePath if label == 1 else ""
-                        payload = MaintletPayload(topic='analysisResult', format='dict', payload=analysisResult)
-                    # todo send normal data + data used to build safezone
-                        networkingOutQ.put(payload)
+                        # simulation
+                        if self.counter < when2Alert:
+                            label = 0
+                            payload = self.preparePayload(std=std, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                        elif self.counter == when2Alert:
+                            if alertSystemEnable:
+                                payload = self.prepareAlertPayload()
+                                networkingOutQ.put(payload)
+                            label = 1
+                            payload = self.preparePayload(std=std, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                        elif self.counter < when2Alert + 5:
+                            label = 1
+                            payload = self.preparePayload(std=std, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                        else:
+                            label = 0
+                            payload = self.preparePayload(std=std, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+
+                    networkingOutQ.put(payload)
         except KeyboardInterrupt:
             logger.error(f"MaintletAnomalyDetector KeyboardInterrupt")
+
+    def prepareAlertPayload(self):
+        # Message type 1
+        # Type: alert to Janam
+
+        payload = {}
+        payload['type'] = MessageType.ALERT
+
+        # later we will replace alertMeta to an ID
+        alertMeta = {}
+        alertMeta['location'] = deviceHeader['location']
+        alertMeta['model'] = deviceHeader['pumpModel']
+        alertMeta['pumpHours'] = 10
+        alertMeta['connectedTool'] = deviceHeader['connectedTool']
+        payload['metaData'] = alertMeta
+
+        alertFiles = []
+        imageName, httpAddress, imageAddress = self._getAnomalyScoreImageAddress()
+        tempEntry = (imageName, imageAddress)
+        alertFiles.append(tempEntry)
+        imageName, httpAddress, imageAddress = self._getRawDataImageAddress()
+        tempEntry = (imageName, imageAddress)
+        alertFiles.append(tempEntry)
+        imageName, httpAddress, imageAddress = self._getSpectrogramImageAddress()
+        tempEntry = (imageName, imageAddress)
+        alertFiles.append(tempEntry)
+        payload['filesInfo'] = alertFiles
+        return payload
+    
+    def preparePayload(self, std, _range, anomalyScore, label, isBuildSafezone, filePath = "", tt = "", sensor = 0):
+        """ we load everything here """
+        payload= {}
+        payload['std'] = str(round(std,3))
+        payload['range'] = str(round(_range,3))
+        payload['anomalyScore'] = str(round(anomalyScore, 3))
+        payload['label'] = label
+        payload['buildSafezone'] = isBuildSafezone # later we will add more info for safezone
+        payload['tt'] = tt
+        payload['sensor'] = sensor
+        payload['pump'] = deviceHeader['pumpModel'] # as pump id
+        payload['isTest'] = (self.state == as_state_test)
+
+        # other algorithm results
+
+
+
+
+        if label == 1:
+            messageType  = MessageType.ALERTTRACKING 
+            payload['filePath'] = filePath 
+            payload = MaintletPayload(topic=messageType.value, format='dict_wavFile', payload=payload)
+        else:
+            messageType = MessageType.NORMAL
+            payload = MaintletPayload(topic=messageType.value, format='dict', payload=payload)
+        return payload

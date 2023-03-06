@@ -11,6 +11,7 @@ import getmac
 import os
 from datetime import datetime
 import json
+from enum import Enum
 #===========================================================================
 #                           HELPER FUNCTIONS 
 #===========================================================================
@@ -74,7 +75,7 @@ deviceConfig = {}
 deviceConfig["deviceMac"] = deviceMac
 deviceConfig["deviceDescription"] = "rpi4 for experiment"
 deviceConfig["deviceLocation"] = "SC3113"
-deviceConfig["pumpModel"] = "surface transducer"
+deviceConfig["pumpModel"] = "SC3113 surface transducer"
 deviceConfig["connectedTool"] = "NA"
 
 #=================== NETWORKING ===================
@@ -183,6 +184,22 @@ WiFiIP = os.popen("ifconfig wlan0 | grep 'inet ' | awk {'print $2'}").read().str
 HTTPPort = 8000
 
 defaultVolumes = [82,82,82,82,82,82]
+
+alertSystemEnable = True
+#alertSystemURL = f"http://10.193.199.26:8000/send-email"
+#alertSystemURL = f"http://10.251.24.81:8000/send-email"
+alertSystemURL = f"http://130.126.137.48:49160/send-email"
+# data analysis
+trainDuration = 25 * 60 # unit S 
+safezoneDuration = 20 * 60 # unit S
+
+
+when2Alert = 5 #for test purpose, no test please set to -1, if test, recommend to set to 5
+ 
+class MessageType(Enum):
+    ALERT = "ALERT"
+    ALERTTRACKING = "ALERTTRACKING"
+    NORMAL = "NORMAL"
 #============================= END OF SECTION ==============================
 
 

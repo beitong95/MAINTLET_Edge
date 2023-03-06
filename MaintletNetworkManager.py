@@ -18,7 +18,7 @@ import traceback
 import logging
 # here we use the global variable messageQueue instead of an instance messageQueue which needs us to pass the network manager around
 from MaintletMessage import *
-from MaintletConfig import deviceHeader, deviceMac
+from MaintletConfig import deviceHeader, deviceMac, MessageType, alertSystemURL
 from MaintletSharedObjects import networkingOutQ
 import queue
 import json
@@ -41,7 +41,6 @@ For sending a message:
 
 replyTopic =  f"MAINTLET/reply/{deviceMac}/#"
 sendBaseTopic =  f"MAINTLET/send/{deviceMac}"
-alertSystemURL = f"http://10.193.199.26:8000"
 
 class MaintletNetworkManager:
     """
@@ -125,11 +124,12 @@ Mid   : {str(mid)}""")
         elif format == 'dict_wavFile':
             # encode everything into string
             filePath = payload['filePath']
-            with open(filePath,'rb') as file:
-                filecontent = file.read()
-                wavFilePayload = base64.b64encode(bytearray(filecontent)).decode()
-            payload['wavFile'] = wavFilePayload
-            mqttPayload = json.dumps(payload)
+            if filePath != "":
+                with open(filePath,'rb') as file:
+                    filecontent = file.read()
+                    wavFilePayload = base64.b64encode(bytearray(filecontent)).decode()
+                payload['wavFile'] = wavFilePayload
+                mqttPayload = json.dumps(payload)
         ret = self.client.publish(topic, mqttPayload, qos=self.MQTTQos)
         return ret
     
@@ -141,12 +141,19 @@ Mid   : {str(mid)}""")
         try:
             while True:
                 payload = networkingOutQ.get()
-                if payload.topic == 'alert':
-                    #x = requests.get(url=alertSystemURL, json = payload.payload)
-                    #x = requests.request("POST", alertSystemURL, headers={}, data=payload['metaData'], files=payload['files'])
-                    pass
+                if type(payload) == dict and payload['type'] == MessageType.ALERT:
+                    # to Janam Alert System
+                    # this is a little bit different to MQTT interface
+                    filesInfo = payload["filesInfo"]
+                    files = []
+                    for fileInfo in filesInfo:
+                        tempEntry = ('images', (fileInfo[0], open(fileInfo[1], 'rb'),'application/octet-stream'))
+                        files.append(tempEntry)
+                    logger.warning(files)
+                    x = requests.request("POST", alertSystemURL, headers={}, data=payload['metaData'], files=files)
+                    print(x.text)
                 else:
-                    self.publishMessage(topic=payload.topic, format=payload.topic, payload=payload.payload)
+                    self.publishMessage(topic=payload.topic, format=payload.format, payload=payload.payload)
         except KeyboardInterrupt:
             logger.error("User Press Ctrl-C") 
 

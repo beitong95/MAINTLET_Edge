@@ -591,8 +591,6 @@ class MaintletDataCollection():
         All parameters are determined by the audio file we would like to play
         When output=True and out_data does not contain at least frame_count frames, paComplete is assumed for flag.
         """        
-
-
         self.playStream = self.pyaudio.open(
             rate = self.playbackRate,
             channels = self.playbackChannelCount,

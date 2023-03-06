@@ -73,15 +73,14 @@ if __name__ == "__main__":
     logger.debug(getFormattedConfig(config))
     os.system(f"cp {configFilePath} {experimentFolderPath}/config.py")
 
-    
     # create objects 
     table = TableEntryForRecordedFile()
     networkManager = MaintletNetworkManager()
     networkManager.connectMQTT(deviceMac=deviceMac, brokerIP=networkConfig['serverIP'], qos=networkConfig['MQTTQoS'])
     databaseManager = MaintletDatabase()
     databaseManager.addTable(tableName=config['pathNameConfig']['tableName'], tableObject=table)
-    #currentVolumes = defaultVolumes # setup the default gains
-    #setMultiMixers(currentVolumes)
+    currentVolumes = defaultVolumes # setup the default gains
+    setMultiMixers(currentVolumes)
     dataCollectionManager = MaintletDataCollection(databaseHandler=databaseManager)
     fileSystemManager = MaintletFileSystem()
     dataAnalyser = MaintletDataAnalysis(networkManager=networkManager)
