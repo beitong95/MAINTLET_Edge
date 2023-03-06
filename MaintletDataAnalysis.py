@@ -11,16 +11,21 @@
 
 import cv2
 import os
-from MaintletConfig import experimentConfig, pathNameConfig, recordingConfig
+from MaintletConfig import experimentConfig, pathNameConfig, recordingConfig, deviceHeader, WiFiIP, HTTPPort
 from MaintletLog import logger
 import numpy as np
 import scipy.io.wavfile as wav
 import librosa
+import librosa.display
 import pandas as pd 
 import more_itertools as mit
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-
+from MaintletNetworkManager import MaintletPayload
+from MaintletGainControl import gainControl, channelNames
+import requests
+alertSystemURL = f"http://10.193.199.26:8000/send-email"
+when2Alert = 5 #for test purpose
 ###############################
 ### some initialization
 ###############################
@@ -62,7 +67,8 @@ as_state_test = 1
 isPlot = False
 
 class MaintletDataAnalysis:
-    def __init__(self):
+    def __init__(self, networkManager):
+        self.networkManager = networkManager
         self.tmpFolderPath = pathNameConfig['tmpFolderPath']
         # clean up the tmp folder
         os.system(f"rm {self.tmpFolderPath}/*.mp4 > /dev/null 2>&1")
@@ -79,6 +85,11 @@ class MaintletDataAnalysis:
         self.counter = 0
         self.key = 0
         self.safezone_check_length = safezone_AS_count
+        self.outputPath = pathNameConfig['outputFolderPath']
+        self.curFilePath = ''
+        self.curFileName = ''
+        self.rawDataToPlot = ''
+        self.spectrogramToPlot = ''
         # for plots
         if isPlot:
             self.means_x = []
@@ -89,8 +100,11 @@ class MaintletDataAnalysis:
             self.test_stds = []
 
     def _loadData(self, filePath):
+        self.curFilePath = filePath
+        self.curFileName = filePath.split('/')[-1].split('.wav')[0]
         data, _ = librosa.load(filePath, sr=sr, mono=False)
         dataCh1 = data[0, :]
+        self.rawDataToPlot = dataCh1
         return dataCh1    
 
     def _setReferenceData(self, data):
@@ -112,6 +126,9 @@ class MaintletDataAnalysis:
         testMelSpectrogram = librosa.feature.melspectrogram(y=testDataCh1, sr=sr, n_mels=64, n_fft=n_fft, hop_length=hop_length)
         # expected shape should be (?, 64)
         testMelSpectrogram = librosa.power_to_db(testMelSpectrogram).T
+        
+        self.spectrogramToPlot = testMelSpectrogram.T
+
         # reshape
         testFrameSequence = np.reshape(testMelSpectrogram, (testMelSpectrogram.shape[0], frameSize[0], frameSize[1]))
 
@@ -315,14 +332,56 @@ class MaintletDataAnalysis:
     def _basicAnalysis(self, data):
         std = np.std(data)
         range = np.ptp(data)
+        _max = np.max(data)
+        _min = np.min(data)
+        absMax = max(_max, _min)
         # send range to autogaincontrol
         # send these data to network handler
         logger.info(f"std = {std}, range = {range}")
-        return std, range
+        return std, range, absMax
 
 
     def plot(self):
         pass
+
+    def _getSetupImageAddress(self):
+        return "setup.png", f"http://{WiFiIP}:{HTTPPort}/pics/setup.png", "./pics/setup.png"
+    
+    def _getAnomalyScoreImageAddress(self):
+        ASPlot = self.anomalyScores[-100:]
+        fig, ax = plt.subplots()
+        ax.plot(ASPlot)
+        ax.set_xlabel("Anomaly Score Index")
+        ax.set_ylabel("Anomaly Score")
+        plt.close(fig)
+        imageName = f"anomalyScore_{self.curFileName}".replace(':', '')
+        imagePath = f"{self.outputPath}/{imageName}.png"
+        fig.savefig(imagePath, bbox_inches='tight')
+        return imageName + '.png', f"http://{WiFiIP}:{HTTPPort}/{imagePath}", imagePath
+    
+    def _getRawDataImageAddress(self):
+        fig, ax = plt.subplots()
+        librosa.display.waveplot(self.rawDataToPlot,sr=sr, ax=ax, offset=1)
+        ax.set_xlabel("Offset Time (S)")
+        ax.set_ylabel("Amplitude")
+        plt.close(fig)
+        imageName = f"rawData_{self.curFileName}".replace(':', '')
+        imagePath = f"{self.outputPath}/{imageName}.png"
+        fig.savefig(imagePath, bbox_inches='tight')
+        return imageName + '.png', f"http://{WiFiIP}:{HTTPPort}/{imagePath}", imagePath
+    
+    def _getSpectrogramImageAddress(self):
+        fig, ax = plt.subplots()
+        img = librosa.display.specshow(self.spectrogramToPlot, x_axis='time',
+                                y_axis='mel', sr=sr,
+                                fmax=int(sr/2), ax=ax)
+        ax.set_xlabel("Offset Time (S)")
+        ax.set_ylabel("Frequency (Hz)")
+        plt.close(fig)
+        imageName = f"spectrogram_{self.curFileName}".replace(':', '')
+        imagePath = f"{self.outputPath}/{imageName}.png"
+        fig.savefig(imagePath, bbox_inches='tight')
+        return imageName + '.png', f"http://{WiFiIP}:{HTTPPort}/{imagePath}", imagePath
 
     def run(self, fileSystemToDataAnalysisQ, networkingOutQ):
         try:
@@ -330,19 +389,56 @@ class MaintletDataAnalysis:
                 filePath = fileSystemToDataAnalysisQ.get()
                 self.counter += 1
                 data = self._loadData(filePath=filePath)
-                std, range = self._basicAnalysis(data=data)
-                isBuildSafezone, anomalyScore, label = self._anomalyDetection(data=data)
-                # networking
-                analysisResult = {}
-                analysisResult['name'] = 'analysisResult'
-                analysisResult['std'] = std
-                analysisResult['range'] = range
-                analysisResult['anomalyScore'] = anomalyScore
-                analysisResult['label'] = label
-                analysisResult['buildSafezone'] = isBuildSafezone
-                analysisResult['file'] = filePath if label == 1 else ""
-                logger.info(analysisResult)
-                # todo send normal data + data used to build safezone
-                networkingOutQ.put(analysisResult)
+                # gain control
+                std, range, absMax = self._basicAnalysis(data=data)
+                channelName = channelNames[0]
+                #gainControl(absMax, channelName)
+                if experimentConfig['enableDataAnalysis']:
+                    isBuildSafezone, anomalyScore, label = self._anomalyDetection(data=data)
+                    # networking
+                    if self.counter == when2Alert:
+                        # simulate we detect an error
+                        alertPayload = {}
+
+                        alertMeta = {}
+                        alertMeta['location'] = deviceHeader['location']
+                        alertMeta['model'] = deviceHeader['pumpModel']
+                        alertMeta['pumpHours'] = 10
+                        alertMeta['connectedTool'] = deviceHeader['connectedTool']
+                        alertPayload['metaData'] = alertMeta
+
+                        alertFiles = []
+                        #imageName, httpAddress, imageAddress = self._getSetupImageAddress()
+                        #tempEntry = ('images', (imageName, open(imageAddress, 'rb'),'application/octet-stream'))
+                        #tempEntry = ('images', (imageName, '1','application/octet-stream'))
+                        #alertFiles.append(tempEntry)
+                        imageName, httpAddress, imageAddress = self._getAnomalyScoreImageAddress()
+                        tempEntry = ('images', (imageName, open(imageAddress, 'rb'),'application/octet-stream'))
+                        #tempEntry = ('images', (imageName, '1','application/octet-stream'))
+                        alertFiles.append(tempEntry)
+                        imageName, httpAddress, imageAddress = self._getRawDataImageAddress()
+                        tempEntry = ('images', (imageName, open(imageAddress, 'rb'),'application/octet-stream'))
+                        #tempEntry = ('images', (imageName, '1','application/octet-stream'))
+                        alertFiles.append(tempEntry)
+                        imageName, httpAddress, imageAddress = self._getSpectrogramImageAddress()
+                        tempEntry = ('images', (imageName, open(imageAddress, 'rb'),'application/octet-stream'))
+                        #tempEntry = ('images', (imageName, '1','application/octet-stream'))
+                        alertFiles.append(tempEntry)
+                        alertPayload['files'] = alertFiles
+
+                        x = requests.request("POST", alertSystemURL, headers={}, data=alertPayload['metaData'], files=alertPayload['files'])
+                        #payload = MaintletPayload(topic='alert', format='dict', payload=alertPayload)
+                        #logger.warning(alertPayload)
+                    else:
+                        analysisResult = {}
+                        analysisResult['std'] = str(round(std,3))
+                        analysisResult['range'] = str(round(range,3))
+                        analysisResult['anomalyScore'] = str(round(anomalyScore, 3))
+                        analysisResult['label'] = label
+                        analysisResult['buildSafezone'] = isBuildSafezone
+                        analysisResult['file'] = filePath if label == 1 else ""
+                        payload = MaintletPayload(topic='analysisResult', format='dict', payload=analysisResult)
+                    # todo send normal data + data used to build safezone
+                        networkingOutQ.put(payload)
         except KeyboardInterrupt:
             logger.error(f"MaintletAnomalyDetector KeyboardInterrupt")

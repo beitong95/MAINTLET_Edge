@@ -73,11 +73,14 @@ deviceMac = getmac.get_mac_address()
 deviceConfig = {}
 deviceConfig["deviceMac"] = deviceMac
 deviceConfig["deviceDescription"] = "rpi4 for experiment"
+deviceConfig["deviceLocation"] = "SC3113"
+deviceConfig["pumpModel"] = "surface transducer"
+deviceConfig["connectedTool"] = "NA"
 
 #=================== NETWORKING ===================
 networkConfig = {}
 networkConfig["enableNetwork"] = False,      
-networkConfig["serverIP"] = '192.168.0.104'
+networkConfig["serverIP"] = '130.126.137.48'
 networkConfig["serverUserName"] = 'beitongt'
 networkConfig["serverFileFolder"] = '/home/beitongt/maintlet/NoiseAware/server/webserver/audio'
 networkConfig["MQTTQoS"] = 2
@@ -135,6 +138,7 @@ experimentConfig["recordCount"] = 0
 # unit: second
 experimentConfig["recordFileDuration"] = 1 
 experimentConfig["recordInterval"] = 2
+experimentConfig["enableDataAnalysis"] = True
 #============================= END OF CONFIGS ==============================
 
 #===========================================================================
@@ -146,11 +150,20 @@ globalConfig = {
     'experimentFolderPath': experimentFolderPath,
 }
 
+# this is a description of the device
 description = f"""###Description###
 Device MAC: {deviceMac}
 Device description: {deviceConfig['deviceDescription']}
 Experiment description: {experimentConfig['experimentDescription']}
 """
+
+# this header will be attached with each messaage sent from the device
+deviceHeader = {}
+deviceHeader["macAddress"] =  deviceMac
+deviceHeader["deviceDescription"] =  deviceConfig['deviceDescription']
+deviceHeader["location"] = deviceConfig['deviceLocation']
+deviceHeader["pumpModel"] = deviceConfig['pumpModel']
+deviceHeader["connectedTool"] = deviceConfig['connectedTool']
 
 config = {}
 config['pathNameConfig'] = pathNameConfig
@@ -164,6 +177,12 @@ config['experimentConfig'] = experimentConfig
 targetFileSize = recordingConfig["samplingRate"] * recordingConfig["channelCount"] * recordingConfig["sampleWidth"] * experimentConfig["recordFileDuration"] + 44 # for wav
 
 minimumDiskSpace = 100 # unit: MB
+
+WiFiIP = os.popen("ifconfig wlan0 | grep 'inet ' | awk {'print $2'}").read().strip()
+
+HTTPPort = 8000
+
+defaultVolumes = [82,82,82,82,82,82]
 #============================= END OF SECTION ==============================
 
 

@@ -7,6 +7,8 @@
 #  @description    :  The entry point for MAINTLET
 #===========================================================================
 
+# TODO: 1. automatical gain control 2. user defined reference data 3. data sync with remote server
+
 #===========================================================================
 #                            IMPORT 
 #===========================================================================
@@ -23,12 +25,15 @@ from multiprocessing import Process
 # MAINTLET modules
 from MaintletDataCollection import MaintletDataCollection
 from MaintletTimer import MaintletTimer
-from MaintletConfig import config, getFormattedConfig, experimentFolderPath
+from MaintletConfig import config, getFormattedConfig, experimentFolderPath, deviceMac, networkConfig, experimentConfig, defaultVolumes
 from MaintletDatabase import MaintletDatabase
 from MaintletTable import TableEntryForRecordedFile
 from MaintletFileSystem import MaintletFileSystem
 from MaintletDataAnalysis import MaintletDataAnalysis
 from MaintletSharedObjects import fileSystemToDataAnalysisQ, networkingOutQ
+from MaintletNetworkManager import MaintletNetworkManager
+import MaintletHTTPServer
+from MaintletGainControl import setMultiMixers, currentVolumes
 #============================= END OF IMPORT ==============================
 
 #===========================================================================
@@ -58,7 +63,7 @@ logger.warning(f"Logging now setup to {userSetLogLevel}")
 #============================= END OF PARSE ARGS==============================
 
 #===========================================================================
-#                            START DATA COLLECTION
+#                            START MAIN
 #===========================================================================
 configFilePath = './MaintletConfig.py'
 
@@ -67,52 +72,42 @@ if __name__ == "__main__":
     # print and save configs of this run
     logger.debug(getFormattedConfig(config))
     os.system(f"cp {configFilePath} {experimentFolderPath}/config.py")
+
+    
+    # create objects 
     table = TableEntryForRecordedFile()
+    networkManager = MaintletNetworkManager()
+    networkManager.connectMQTT(deviceMac=deviceMac, brokerIP=networkConfig['serverIP'], qos=networkConfig['MQTTQoS'])
     databaseManager = MaintletDatabase()
     databaseManager.addTable(tableName=config['pathNameConfig']['tableName'], tableObject=table)
+    #currentVolumes = defaultVolumes # setup the default gains
+    #setMultiMixers(currentVolumes)
     dataCollectionManager = MaintletDataCollection(databaseHandler=databaseManager)
-    filesystemManager = MaintletFileSystem()
-    dataAnalyser = MaintletDataAnalysis()
-    p = Process(target=dataAnalyser.run, args=(fileSystemToDataAnalysisQ, networkingOutQ), daemon=True)
-    t1 = threading.Thread(target = dataCollectionManager.run, daemon=True)
-    t2 = threading.Thread(target = filesystemManager.run, daemon=True)
-    p.start()
-    t1.start()
-    t2.start()
+    fileSystemManager = MaintletFileSystem()
+    dataAnalyser = MaintletDataAnalysis(networkManager=networkManager)
+
+    # start processes and threads
+    dataAnalyserProcess = Process(target=dataAnalyser.run, args=(fileSystemToDataAnalysisQ, networkingOutQ), daemon=True)
+    maintletHTTPServerProcess = Process(target=MaintletHTTPServer.run, daemon=True)
+    dataCollectorThread = threading.Thread(target = dataCollectionManager.run, daemon=True)
+    fileSystemManagerThread = threading.Thread(target = fileSystemManager.run, daemon=True)
+    networkSendingThread = threading.Thread(target = networkManager.sendMessageLoop, daemon=True)
+    networkReceivingThread = threading.Thread(target = networkManager.receiveMessageLoop, daemon=True)
+    dataAnalyserProcess.start()
+    maintletHTTPServerProcess.start()
+    dataCollectorThread.start()
+    fileSystemManagerThread.start()
+    networkSendingThread.start()
+    networkReceivingThread.start()
+    
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        logger.debug(f"Main KeyboardInterrupt")
+        logger.error(f"Maintlet Main KeyboardInterrupt")
         sys.exit(1)
-    
-    # # Init network
-    # if self.enableNetwork:
-    #     # todo  We need to rewrite the network part 
-    #     self.networkManager = MaintletNetworkManager()
-    #     self.syncManager = MaintletClientServerSyncManager(networkManager=self.networkManager, audioInterface=self)
-    #     self.syncManager.start()
-        
-    #     self.DVNetworkManager = MaintletNetworkManager()
-    #     self.DVNetworkManager.connectMQTT(self.deviceMac, self.DVserverIP, 2, "", "", None, None)
-
-    # networkManager = MaintletNetworkManager()
-    # networkManager.connectMQTT(deviceMac=deviceMac, brokerIP=serverIP, qos=MQTTQoS)
-    # try:
-    #     maintletDataCollector = MaintletDataCollection(experimentFolderPath = experimentFolderPath, timer = timer)
-    # except Exception as e:
-    #     traceback.print_exc()
-    #     logger.critical(f"Init Error: \n {str(e)}")
-    #     sys.exit(1)
-
-    # while True:
-    #     try:
-    #         maintletDataCollector.start()
-    #     except Exception as e:
-    #         logger.error("RESTART")
-    #         logger.error(e)
-    #         maintletDataCollector.prepareRestart()
-    #         time.sleep(1)
-    #         maintletDataCollector = MaintletDataCollection(experimentFolderPath = experimentFolderPath, timer = timer)
-#============================= END OF CODE ==============================
+    except Exception as e:
+        logger.error(str(e))
+        sys.exit(1)
+#============================= END OF MAIN ==============================
 

@@ -43,6 +43,7 @@ class TableEntryForRecordedFile:
         self.sensor5Location = ''
         self.sensor6Type = ''
         self.sensor6Location = ''
+        self.volumes = ''
         self.experimentName = ''
         self.experimentDescription = ''
         self.deviceMac = ''

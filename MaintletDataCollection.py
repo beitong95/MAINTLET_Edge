@@ -40,6 +40,7 @@ from MaintletConfig import config
 from MaintletSharedObjects import timer
 from MaintletDatabase import MaintletDatabase
 from MaintletMessage import MaintletMessage
+import MaintletGainControl
 #============================= END OF IMPORT ==============================
 
 class MaintletDataCollection():
@@ -117,7 +118,7 @@ class MaintletDataCollection():
         self.sensor5 = MaintletSensor(self.config['sensorConfig']['sensor5'])
         self.sensor6 = MaintletSensor(self.config['sensorConfig']['sensor6'])
         self.sensors = [self.sensor1, self.sensor2, self.sensor3, self.sensor4, self.sensor5, self.sensor6]
-
+        
         # After the device is rebooted, starting data collection module (driver or portAudio, we do not know the reason) will fail in the first several trials. 
         # Here we detect these failures and automatically retry to start the data collection module. 
         # We name this operation as autoRetry
@@ -207,6 +208,7 @@ class MaintletDataCollection():
         table.sensor5Location = self.safeQuery("sensor5").location
         table.sensor6Type = self.safeQuery("sensor6").type
         table.sensor6Location = self.safeQuery("sensor6").location
+        table.volumes = ','.join(str(e) for e in MaintletGainControl.currentVolumes)
         table.experimentName = self.safeQuery("experimentName")
         table.experimentDescription = self.safeQuery("experimentDescription")
         table.deviceMac = self.safeQuery("deviceMac")
@@ -536,6 +538,8 @@ class MaintletDataCollection():
             tableEntry = self.createTableEntry(tableTemplate=self.table)
             tableEntry.filename = recordOutputFilename
             tableEntry.recordTime = recordTime
+            tableEntry.volumes = ','.join(str(e) for e in MaintletGainControl.currentVolumes)
+            # print(tableEntry.volumes)
             tableEntry.updateKey()
             #todo implement a message Queue Qos = 0 # MQTT QoS 2? 
             self.databaseHandler.messageQPut(MaintletMessage(f"insert_{config['pathNameConfig']['tableName']}", tableEntry))

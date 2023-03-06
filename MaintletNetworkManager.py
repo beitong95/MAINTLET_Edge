@@ -18,6 +18,30 @@ import traceback
 import logging
 # here we use the global variable messageQueue instead of an instance messageQueue which needs us to pass the network manager around
 from MaintletMessage import *
+from MaintletConfig import deviceHeader, deviceMac
+from MaintletSharedObjects import networkingOutQ
+import queue
+import json
+import base64
+import requests
+"""
+Format for mqtt message
+
+To server:
+topic: MAINTLET/send/<deviceMac>/<format>/<messageTopic>
+message: payload
+
+From server:
+topic: MAINTLET/reply/<deviceMac>/<messageTopic>
+
+For sending a message:
+(1) Fill the MaintletPayload class
+(2) Put it to networkingOutQ 
+"""
+
+replyTopic =  f"MAINTLET/reply/{deviceMac}/#"
+sendBaseTopic =  f"MAINTLET/send/{deviceMac}"
+alertSystemURL = f"http://10.193.199.26:8000"
 
 class MaintletNetworkManager:
     """
@@ -28,6 +52,7 @@ class MaintletNetworkManager:
     def __init__(self):
         # a flag for stopping threads
         self.stopThread = False
+        self.mqttInMessageQ = queue.Queue(maxsize=0)
 
     def leave(self):
         # stop MQTT
@@ -52,9 +77,6 @@ class MaintletNetworkManager:
         self.MQTTPort = 1883
         self.broker = brokerIP
 
-        # later the client will subscribe to this topic
-        self.replyTopic = f"MAINTLET/{deviceMac}/#"
-
         self.client = paho.Client(client_id=self.deviceMac)
         self.client.on_connect = self.on_connect
         self.client.on_publish = self.on_publish
@@ -63,20 +85,18 @@ class MaintletNetworkManager:
         self.client.connect(self.broker, self.MQTTPort)
         self.client.loop_start()
 
-    #! We did not use message_callback_add because it does not support parallel message handling.   
-    #self.client.message_callback_add(sub, callback)
-
     def on_message(self, client, userdata, msg):
         logger.debug(f"""
 Client: {client._client_id.decode("utf-8") }
 Topic : {str(msg.topic)}
 Msg   : {str(msg.payload)}""")
-        MaintletMQPut(msg)
+        self.mqttInMessageQ.put(msg)
 
     def on_publish(self, client, userdata, mid):
         logger.debug(f"""
 Client: {client._client_id.decode("utf-8") }
 Mid   : {str(mid)}""")
+        # handle when message or file is successfully published
     
     def on_connect(self, client, userdata, flags, rc):
         """
@@ -86,24 +106,64 @@ Mid   : {str(mid)}""")
         """        
         logger.warning(f"Connected to Server: {self.MQTTBrokerIP} with result code {str(rc)}")
         # subscribe to the replyTopic
-        if self.replyTopic != "":
-            self.client.subscribe(self.replyTopic, 2)
+        if replyTopic != "":
+            self.client.subscribe(replyTopic, 2)
     
-    def publishMessage(self, message, topic):
-        """
-        Publish a Message to the broker
-
-        Args:
-            message (string): message to be sent
-            topic (string): MQTT topic
-
-        Returns:
-            tuple: (?, message ID)
-        """        
-        topic = "MAINTLET/" + topic
-        ret = self.client.publish(topic, str(message), qos=self.MQTTQos)
+    def publishMessage(self, topic, format, payload):
+        """ publish a string """
+        topic = sendBaseTopic + '/' + format + '/' + topic
+        mqttPayload = ""
+        if format == "message":
+            mqttPayload = str(payload)
+        elif format == "dict":
+            mqttPayload = json.dumps(payload)
+        elif format == 'wavFile':
+            # this is rare to use, since we also like to send some metadata for that wavFile
+            with open(payload,'rb') as file:
+                filecontent = file.read()
+                mqttPayload = bytearray(filecontent)
+        elif format == 'dict_wavFile':
+            # encode everything into string
+            filePath = payload['filePath']
+            with open(filePath,'rb') as file:
+                filecontent = file.read()
+                wavFilePayload = base64.b64encode(bytearray(filecontent)).decode()
+            payload['wavFile'] = wavFilePayload
+            mqttPayload = json.dumps(payload)
+        ret = self.client.publish(topic, mqttPayload, qos=self.MQTTQos)
         return ret
+    
+    def _handleMessage(msg):
+        pass
 
+    def sendMessageLoop(self):
+        """ A loop to send messages in the queue """
+        try:
+            while True:
+                payload = networkingOutQ.get()
+                if payload.topic == 'alert':
+                    #x = requests.get(url=alertSystemURL, json = payload.payload)
+                    #x = requests.request("POST", alertSystemURL, headers={}, data=payload['metaData'], files=payload['files'])
+                    pass
+                else:
+                    self.publishMessage(topic=payload.topic, format=payload.topic, payload=payload.payload)
+        except KeyboardInterrupt:
+            logger.error("User Press Ctrl-C") 
+
+    def receiveMessageLoop(self):
+        """ start a loop for (1) mqtt (2) handling message """
+        try:
+            while True:
+                msg = self.mqttInMessageQ.get()
+                self._handleMessage(msg)
+        except KeyboardInterrupt:
+            logger.error("User Press Ctrl-C") 
+
+class MaintletPayload:
+    def __init__(self, topic, format, payload):
+        self.topic = topic
+        self.format = format
+        self.payload = payload
 #===========================================================================
 #                            TEST CODE
 # 1. Run "mosquitto_sub -h 91.121.93.94 -t MAINTLET/#&"" in any server installed mosquitto_client
@@ -114,11 +174,16 @@ Mid   : {str(mid)}""")
 #===========================================================================
 if __name__ == '__main__':
     deviceMac = '11:22'
-    brokerIP = '91.121.93.94'   # test.mosquitto.org
+    brokerIP = '130.126.137.48'   # test.mosquitto.org
     qos = 2
     networkManager = MaintletNetworkManager()
     networkManager.connectMQTT(deviceMac=deviceMac, brokerIP=brokerIP, qos=qos)
-    networkManager.publishMessage('hi', 'test')
+    networkManager.publishMessage('sendMessage', 'message', '123')
+    networkManager.publishMessage('sendDict', 'dict', deviceHeader)
+    networkManager.publishMessage('sendWavFile', 'wavFile', './testAudio/testRecord.wav')
+    d = {}
+    d['filePath'] = './testAudio/testRecord.wav'
+    networkManager.publishMessage('sendDict_WavFile', 'dict_wavFile', d)
     while True:
         time.sleep(1)
     
