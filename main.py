@@ -34,7 +34,7 @@ from MaintletDataAnalysis import MaintletDataAnalysis
 from MaintletSharedObjects import fileSystemToDataAnalysisQ, networkingOutQ
 from MaintletNetworkManager import MaintletNetworkManager
 import MaintletHTTPServer
-from MaintletGainControl import setMultiMixers, currentVolumes
+from MaintletGainControl import setMultiMixers, currentVolumes, list_cards
 #============================= END OF IMPORT ==============================
 
 #===========================================================================
@@ -68,7 +68,6 @@ logger.warning(f"Logging now setup to {userSetLogLevel}")
 #===========================================================================
 configFilePath = './MaintletConfig.py'
 
-
 if __name__ == "__main__":
     # print and save configs of this run
     logger.debug(getFormattedConfig(config))
@@ -79,13 +78,10 @@ if __name__ == "__main__":
     networkManager = MaintletNetworkManager()
     networkManager.connectMQTT(deviceMac=deviceMac, brokerIP=networkConfig['serverIP'], qos=networkConfig['MQTTQoS'])
 
-    networkManager2 = MaintletNetworkManager()
-    networkManager2.connectMQTT(deviceMac=deviceMac, brokerIP='10.193.91.74', qos=2)
-
     databaseManager = MaintletDatabase()
     databaseManager.addTable(tableName=config['pathNameConfig']['tableName'], tableObject=table)
     currentVolumes = defaultVolumes # setup the default gains
-    setMultiMixers(currentVolumes)
+    setMultiMixers(currentVolumes, cardindex=3)
     dataCollectionManager = MaintletDataCollection(databaseHandler=databaseManager)
     fileSystemManager = MaintletFileSystem()
     dataAnalyser = MaintletDataAnalysis(networkManager=networkManager)

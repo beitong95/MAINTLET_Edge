@@ -339,10 +339,11 @@ class MaintletDataAnalysis:
         _max = np.max(data)
         _min = np.min(data)
         absMax = max(_max, _min)
+        rms = np.sqrt(np.mean(data**2))
         # send range to autogaincontrol
         # send these data to network handler
         logger.info(f"std = {std}, range = {range}")
-        return std, range, absMax
+        return std, range, absMax, rms
 
 
     def plot(self):
@@ -405,7 +406,7 @@ class MaintletDataAnalysis:
                 self.counter += 1
                 data = self._loadData(filePath=filePath)
                 # get some basic analysis results
-                std, range, absMax = self._basicAnalysis(data=data)
+                std, range, absMax, rms = self._basicAnalysis(data=data)
                 # gain control
                 #channelName = channelNames[0]
                 #gainControl(absMax, channelName)
@@ -421,24 +422,24 @@ class MaintletDataAnalysis:
                                 payload = self.prepareAlertPayload()
                                 networkingOutQ.put(payload)
 
-                        payload = self.preparePayload(std=std, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                        payload = self.preparePayload(std=std, rms=rms, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
                     else:
                         # simulation
                         if self.counter < when2Alert:
                             label = 0
-                            payload = self.preparePayload(std=std, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                            payload = self.preparePayload(std=std, rms=rms, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
                         elif self.counter == when2Alert:
                             if alertSystemEnable:
                                 payload = self.prepareAlertPayload()
                                 networkingOutQ.put(payload)
                             label = 1
-                            payload = self.preparePayload(std=std, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                            payload = self.preparePayload(std=std, rms=rms, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
                         elif self.counter < when2Alert + 5:
                             label = 1
-                            payload = self.preparePayload(std=std, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                            payload = self.preparePayload(std=std, rms=rms, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
                         else:
                             label = 0
-                            payload = self.preparePayload(std=std, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                            payload = self.preparePayload(std=std, rms=rms, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
 
                     networkingOutQ.put(payload)
         except KeyboardInterrupt:
@@ -472,7 +473,7 @@ class MaintletDataAnalysis:
         payload['filesInfo'] = alertFiles
         return payload
     
-    def preparePayload(self, std, _range, anomalyScore, label, isBuildSafezone, filePath = "", tt = "", sensor = 0):
+    def preparePayload(self, std, rms, _range, anomalyScore, label, isBuildSafezone, filePath = "", tt = "", sensor = 0):
         """ we load everything here """
         payload= {}
         payload['std'] = str(round(std,3))
@@ -484,6 +485,7 @@ class MaintletDataAnalysis:
         payload['sensor'] = sensor
         payload['pump'] = deviceHeader['pumpModel'] # as pump id
         payload['isTest'] = (self.state == as_state_test)
+        payload['rms'] = str(round(rms,3))
 
         # other algorithm results
 

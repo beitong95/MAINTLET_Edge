@@ -75,10 +75,10 @@ messageQMaxSize = 100
 deviceMac = getmac.get_mac_address()
 deviceConfig = {}
 deviceConfig["deviceMac"] = deviceMac
-deviceConfig["deviceDescription"] = "rpi4 test"
-deviceConfig["deviceLocation"] = "home"
-deviceConfig["pumpModel"] = "home test"
-deviceConfig["connectedTool"] = "NA"
+deviceConfig["deviceDescription"] = "IDEA Lab Rpi4"
+deviceConfig["deviceLocation"] = "IDEA Lab"
+deviceConfig["pumpModel"] = "3d printer"
+deviceConfig["connectedTool"] = "3d printer"
 
 #=================== DATABASE ===================
 databaseConfig = {}
@@ -87,7 +87,7 @@ databaseConfig["enableDatabase"] = False
 networkConfig = {}
 networkConfig["enableNetwork"] = False # deprecated
 networkConfig["serverIP"] = '130.126.137.48'
-networkConfig["serverUserName"] = 'beitongt'
+networkConfig["serverUserName"] = 'workbench'
 networkConfig["serverFileFolder"] = '/home/beitongt/maintlet/NoiseAware/server/webserver/audio'
 networkConfig["MQTTQoS"] = 2
 
@@ -146,9 +146,9 @@ experimentConfig["recordCount"] = 0
 # before 06092023
 #experimentConfig["recordFileDuration"] = 1 
 #experimentConfig["recordInterval"] = 2
-experimentConfig["recordFileDuration"] = 10
-experimentConfig["recordInterval"] = 0
-experimentConfig["enableDataAnalysis"] = False
+experimentConfig["recordFileDuration"] = 2
+experimentConfig["recordInterval"] = 2 
+experimentConfig["enableDataAnalysis"] = True
 #============================= END OF CONFIGS ==============================
 
 #===========================================================================
@@ -206,9 +206,9 @@ safezoneDuration = 20 * 60 # unit S
 
 when2Alert = -1 #for test purpose, no test please set to -1, if test, recommend to set to 5
 
-sendFileAnyway = False
+sendFileAnyway = True
 
-MAX_FILE_COUNT = 10
+MAX_FILE_COUNT = 10000
  
 class MessageType(Enum):
     ALERT = "ALERT"
