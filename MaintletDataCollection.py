@@ -30,6 +30,8 @@ import os
 from os.path import isfile, join
 from os import listdir
 import traceback
+import pyprctl
+import psutil
 
 # Other Maintlet modules
 from MaintletSensor import MaintletSensor
@@ -74,6 +76,7 @@ class MaintletDataCollection():
         self.enableRecording = self.config['recordingConfig']['enableRecording']
         self.enablePlayback = self.config['playbackConfig']['enablePlayback']
         self.enableNetwork = self.config['networkConfig']['enableNetwork']  # If false, all data will be stored locally
+        self.enableDatabase = self.config['databaseConfig']['enableDatabase']
 
         # Init some variables for performance tracking
         self.cpuTemperature = CPUTemperature() # CPU temperature
@@ -278,6 +281,7 @@ class MaintletDataCollection():
 
     def run(self):
         """ wrapper for start, autoRetry """
+        pyprctl.set_name("DataCollection")
         start = True
         # auto retry
         while True:
@@ -377,6 +381,7 @@ class MaintletDataCollection():
 
     def recordCallback(self, in_data, frame_count, time_info, status):
         ''' this is the handler for each chunk of data'''
+        pyprctl.set_name("RecordCallBack")
 
         # For autoRetry
         if self.prevADCTime == -1:
@@ -524,6 +529,7 @@ class MaintletDataCollection():
             logger.info(message)
 
     def handleRecordData(self, dataBuffer, recordOutputFilepath):
+        pyprctl.set_name("HandleRecordData")
         # We should not write variables with states in any thread, because these states will be undetermined.
         with self.timer.getTime(f"<SaveRecordDataThread>_<{os.path.basename(__file__)}:#x_#x>") as mt:
             if recordOutputFilepath == "" or len(dataBuffer) <= self.outputBufferSizeInByte - 100:
@@ -542,7 +548,8 @@ class MaintletDataCollection():
             # print(tableEntry.volumes)
             tableEntry.updateKey()
             #todo implement a message Queue Qos = 0 # MQTT QoS 2? 
-            self.databaseHandler.messageQPut(MaintletMessage(f"insert_{config['pathNameConfig']['tableName']}", tableEntry))
+            if self.enableDatabase == True:
+                self.databaseHandler.messageQPut(MaintletMessage(f"insert_{config['pathNameConfig']['tableName']}", tableEntry))
             logger.debug(tableEntry)
             
             # save the data

@@ -6,7 +6,7 @@
 #  @createdOn      :  02/06/2023
 #  @description    :  Handle Files in a folder
 #===========================================================================
-from MaintletConfig import pathNameConfig, targetFileSize, minimumDiskSpace
+from MaintletConfig import pathNameConfig, targetFileSize, minimumDiskSpace, MAX_FILE_COUNT
 from MaintletSharedObjects import timer, fileSystemToDataAnalysisQ
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler
@@ -17,6 +17,7 @@ import threading
 import shutil
 from os.path import isfile, join
 from os import listdir
+import pyprctl
 
 class MaintletFileSystem:
     def __init__(self, networkHandler = -1):
@@ -66,8 +67,13 @@ class MaintletFileSystem:
         if currentDiskSpace < minimumDiskSpace:
             logger.error(f"Disk is Full: Remaining disk space = {currentDiskSpace} MB")        
             self._cleanUpSpace()
-        while self.getCurrentRemainingDiskSpace() <= minimumDiskSpace:
+        # restrict the number of files
+        filepaths = self._getAllRecordFilepaths(self.recordFolderPath)
+        num_of_file = len(filepaths)
+        while self.getCurrentRemainingDiskSpace() <= minimumDiskSpace or num_of_file > MAX_FILE_COUNT:
             self._cleanUpSpace()
+            filepaths = self._getAllRecordFilepaths(self.recordFolderPath)
+            num_of_file = len(filepaths)
 
     def _getAllRecordFilepaths(self, data_dir):
         """ Get all absolute file paths in a directory and sort them in alphabetical order """
@@ -95,6 +101,7 @@ class MaintletFileSystem:
             raise     
 
     def run(self):
+        pyprctl.set_name("FileSystemMgr")
         self.observer.start()
         try:
             while True:

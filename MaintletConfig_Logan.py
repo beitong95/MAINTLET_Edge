@@ -38,12 +38,10 @@ def getFormattedConfig(config):
 #                            CONFIGS
 #===========================================================================
 
-
-#=================== For Email Alert===================
+#=================== For Logger ===================
 mailhost = 'outbound-relays.techservices.illinois.edu'
 fromaddr = 'beitong2@illinois.edu'
 toaddrs = 'beitong2@illinois.edu'
-#=================== For Logger ===================
 logFileName = 'test.log'
 #=================== PATH AND FOLDER NAME ===================
 pathNameConfig = {}
@@ -75,9 +73,9 @@ messageQMaxSize = 100
 deviceMac = getmac.get_mac_address()
 deviceConfig = {}
 deviceConfig["deviceMac"] = deviceMac
-deviceConfig["deviceDescription"] = "rpi4 test"
-deviceConfig["deviceLocation"] = "home"
-deviceConfig["pumpModel"] = "home test"
+deviceConfig["deviceDescription"] = "rpi4 for Cody experiment"
+deviceConfig["deviceLocation"] = "SC3113"
+deviceConfig["pumpModel"] = "SC3113 Cody Test"
 deviceConfig["connectedTool"] = "NA"
 
 #=================== DATABASE ===================
@@ -85,7 +83,7 @@ databaseConfig = {}
 databaseConfig["enableDatabase"] = False
 #=================== NETWORKING ===================
 networkConfig = {}
-networkConfig["enableNetwork"] = False # deprecated
+networkConfig["enableNetwork"] = False,      
 networkConfig["serverIP"] = '130.126.137.48'
 networkConfig["serverUserName"] = 'beitongt'
 networkConfig["serverFileFolder"] = '/home/beitongt/maintlet/NoiseAware/server/webserver/audio'
@@ -96,7 +94,6 @@ recordingConfig = {}
 recordingConfig["enableRecording"] = True 
 recordingConfig["samplingRate"] = 48000 
 recordingConfig["channelCount"] = 8 
-# sampleWidth
 # 2 -> int16
 # 3 -> int24
 # 4 -> int32
@@ -120,22 +117,22 @@ playbackConfig["files"] = ['testAudio/testRecordAndPlay.wav',
 sensorConfig = {}
 sensorConfig['sensor1'] = {}
 sensorConfig['sensor1']['type'] = 'vibration'
-sensorConfig['sensor1']['location'] = 'motor_back'
+sensorConfig['sensor1']['location'] = 'top'
 sensorConfig['sensor2'] = {}
 sensorConfig['sensor2']['type'] = 'vibration'
-sensorConfig['sensor2']['location'] = 'motor_front'
+sensorConfig['sensor2']['location'] = 'top'
 sensorConfig['sensor3'] = {}
 sensorConfig['sensor3']['type'] = 'vibration'
-sensorConfig['sensor3']['location'] = 'mid'
+sensorConfig['sensor3']['location'] = 'top'
 sensorConfig['sensor4'] = {}
 sensorConfig['sensor4']['type'] = 'vibration'
-sensorConfig['sensor4']['location'] = 'vane chamber'
+sensorConfig['sensor4']['location'] = 'top'
 sensorConfig['sensor5'] = {}
 sensorConfig['sensor5']['type'] = 'vibration'
-sensorConfig['sensor5']['location'] = 'magnetic_field'
+sensorConfig['sensor5']['location'] = 'top'
 sensorConfig['sensor6'] = {}
 sensorConfig['sensor6']['type'] = 'vibration'
-sensorConfig['sensor6']['location'] = 'microphone'
+sensorConfig['sensor6']['location'] = 'top'
 
 experimentConfig = {}
 experimentConfig["experimentName"] = 'Test'
@@ -143,12 +140,9 @@ experimentConfig["experimentDescription"] = 'Test'
 # How many files we want to record? 0 means record until Ctrl-C
 experimentConfig["recordCount"] = 0 
 # unit: second
-# before 06092023
-#experimentConfig["recordFileDuration"] = 1 
-#experimentConfig["recordInterval"] = 2
-experimentConfig["recordFileDuration"] = 10
-experimentConfig["recordInterval"] = 0
-experimentConfig["enableDataAnalysis"] = False
+experimentConfig["recordFileDuration"] = 1 
+experimentConfig["recordInterval"] = 2
+experimentConfig["enableDataAnalysis"] = True
 #============================= END OF CONFIGS ==============================
 
 #===========================================================================
@@ -187,13 +181,13 @@ config['experimentConfig'] = experimentConfig
 
 targetFileSize = recordingConfig["samplingRate"] * recordingConfig["channelCount"] * recordingConfig["sampleWidth"] * experimentConfig["recordFileDuration"] + 44 # for wav
 
-minimumDiskSpace = 200 # unit: MB
+minimumDiskSpace = 100 # unit: MB
 
 WiFiIP = os.popen("ifconfig wlan0 | grep 'inet ' | awk {'print $2'}").read().strip()
 
 HTTPPort = 8000
 
-defaultVolumes = [80,60,72,72,72,72]
+defaultVolumes = [82,82,82,82,82,82]
 
 alertSystemEnable = False
 #alertSystemURL = f"http://10.193.199.26:8000/send-email"
@@ -205,10 +199,6 @@ safezoneDuration = 20 * 60 # unit S
 
 
 when2Alert = -1 #for test purpose, no test please set to -1, if test, recommend to set to 5
-
-sendFileAnyway = False
-
-MAX_FILE_COUNT = 10
  
 class MessageType(Enum):
     ALERT = "ALERT"

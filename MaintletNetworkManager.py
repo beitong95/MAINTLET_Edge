@@ -24,6 +24,7 @@ import queue
 import json
 import base64
 import requests
+import pyprctl
 """
 Format for mqtt message
 
@@ -85,11 +86,19 @@ class MaintletNetworkManager:
         self.client.loop_start()
 
     def on_message(self, client, userdata, msg):
-        logger.debug(f"""
+        logger.error(f"""
 Client: {client._client_id.decode("utf-8") }
 Topic : {str(msg.topic)}
 Msg   : {str(msg.payload)}""")
         self.mqttInMessageQ.put(msg)
+        if self.MQTTBrokerIP == '10.193.91.74':
+            payload= {}
+            payload['value'] = str(msg.payload.decode("utf-8"))
+            payload['pump'] = deviceHeader['pumpModel']
+            payload['sensor'] = 'pressure'
+            messageType  = MessageType.PRESSURE
+            payload = MaintletPayload(topic=messageType.value, format='dict', payload=payload)
+            networkingOutQ.put(payload)
 
     def on_publish(self, client, userdata, mid):
         logger.debug(f"""
@@ -138,27 +147,30 @@ Mid   : {str(mid)}""")
 
     def sendMessageLoop(self):
         """ A loop to send messages in the queue """
-        try:
-            while True:
-                payload = networkingOutQ.get()
-                if type(payload) == dict and payload['type'] == MessageType.ALERT:
-                    # to Janam Alert System
-                    # this is a little bit different to MQTT interface
-                    filesInfo = payload["filesInfo"]
-                    files = []
-                    for fileInfo in filesInfo:
-                        tempEntry = ('images', (fileInfo[0], open(fileInfo[1], 'rb'),'application/octet-stream'))
-                        files.append(tempEntry)
-                    logger.warning(files)
-                    x = requests.request("POST", alertSystemURL, headers={}, data=payload['metaData'], files=files)
-                    print(x.text)
-                else:
-                    self.publishMessage(topic=payload.topic, format=payload.format, payload=payload.payload)
-        except KeyboardInterrupt:
-            logger.error("User Press Ctrl-C") 
+        pyprctl.set_name("SendMessageLoop")
+        if self.MQTTBrokerIP != '10.193.91.74':
+            try:
+                while True:
+                    payload = networkingOutQ.get()
+                    if type(payload) == dict and payload['type'] == MessageType.ALERT:
+                        # to Janam Alert System
+                        # this is a little bit different to MQTT interface
+                        filesInfo = payload["filesInfo"]
+                        files = []
+                        for fileInfo in filesInfo:
+                            tempEntry = ('images', (fileInfo[0], open(fileInfo[1], 'rb'),'application/octet-stream'))
+                            files.append(tempEntry)
+                        logger.warning(files)
+                        x = requests.request("POST", alertSystemURL, headers={}, data=payload['metaData'], files=files)
+                        print(x.text)
+                    else:
+                        self.publishMessage(topic=payload.topic, format=payload.format, payload=payload.payload)
+            except KeyboardInterrupt:
+                logger.error("User Press Ctrl-C") 
 
     def receiveMessageLoop(self):
         """ start a loop for (1) mqtt (2) handling message """
+        pyprctl.set_name("ReceiveMessageLoop")
         try:
             while True:
                 msg = self.mqttInMessageQ.get()

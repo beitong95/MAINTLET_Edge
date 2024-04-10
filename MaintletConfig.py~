@@ -38,12 +38,10 @@ def getFormattedConfig(config):
 #                            CONFIGS
 #===========================================================================
 
-
-#=================== For Email Alert===================
+#=================== For Logger ===================
 mailhost = 'outbound-relays.techservices.illinois.edu'
 fromaddr = 'beitong2@illinois.edu'
 toaddrs = 'beitong2@illinois.edu'
-#=================== For Logger ===================
 logFileName = 'test.log'
 #=================== PATH AND FOLDER NAME ===================
 pathNameConfig = {}
@@ -75,9 +73,9 @@ messageQMaxSize = 100
 deviceMac = getmac.get_mac_address()
 deviceConfig = {}
 deviceConfig["deviceMac"] = deviceMac
-deviceConfig["deviceDescription"] = "rpi4 test"
-deviceConfig["deviceLocation"] = "home"
-deviceConfig["pumpModel"] = "home test"
+deviceConfig["deviceDescription"] = "rpi4 for Cody experiment"
+deviceConfig["deviceLocation"] = "SC3113"
+deviceConfig["pumpModel"] = "SC3113 Cody Test"
 deviceConfig["connectedTool"] = "NA"
 
 #=================== DATABASE ===================
@@ -96,7 +94,6 @@ recordingConfig = {}
 recordingConfig["enableRecording"] = True 
 recordingConfig["samplingRate"] = 48000 
 recordingConfig["channelCount"] = 8 
-# sampleWidth
 # 2 -> int16
 # 3 -> int24
 # 4 -> int32
@@ -148,7 +145,7 @@ experimentConfig["recordCount"] = 0
 #experimentConfig["recordInterval"] = 2
 experimentConfig["recordFileDuration"] = 10
 experimentConfig["recordInterval"] = 0
-experimentConfig["enableDataAnalysis"] = False
+experimentConfig["enableDataAnalysis"] = True
 #============================= END OF CONFIGS ==============================
 
 #===========================================================================
@@ -187,7 +184,7 @@ config['experimentConfig'] = experimentConfig
 
 targetFileSize = recordingConfig["samplingRate"] * recordingConfig["channelCount"] * recordingConfig["sampleWidth"] * experimentConfig["recordFileDuration"] + 44 # for wav
 
-minimumDiskSpace = 200 # unit: MB
+minimumDiskSpace = 2000 # unit: MB
 
 WiFiIP = os.popen("ifconfig wlan0 | grep 'inet ' | awk {'print $2'}").read().strip()
 
@@ -206,7 +203,7 @@ safezoneDuration = 20 * 60 # unit S
 
 when2Alert = -1 #for test purpose, no test please set to -1, if test, recommend to set to 5
 
-sendFileAnyway = False
+sendFileAnyway = True
 
 MAX_FILE_COUNT = 10
  

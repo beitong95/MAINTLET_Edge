@@ -22,6 +22,7 @@ import time
 import numpy as np
 import threading
 from multiprocessing import Process
+import psutil
 # MAINTLET modules
 from MaintletDataCollection import MaintletDataCollection
 from MaintletTimer import MaintletTimer
@@ -41,7 +42,7 @@ from MaintletGainControl import setMultiMixers, currentVolumes
 #===========================================================================
 # Set this (data acquisition) process with the highest priority
 pid = os.getpid()
-os.system("sudo renice -n -19 -p " + str(pid))
+#os.system("sudo renice -n -19 -p " + str(pid))
 
 # set numpy print size to maximum
 np.set_printoptions(threshold=sys.maxsize)
@@ -77,6 +78,10 @@ if __name__ == "__main__":
     table = TableEntryForRecordedFile()
     networkManager = MaintletNetworkManager()
     networkManager.connectMQTT(deviceMac=deviceMac, brokerIP=networkConfig['serverIP'], qos=networkConfig['MQTTQoS'])
+
+    networkManager2 = MaintletNetworkManager()
+    networkManager2.connectMQTT(deviceMac=deviceMac, brokerIP='10.193.91.74', qos=2)
+
     databaseManager = MaintletDatabase()
     databaseManager.addTable(tableName=config['pathNameConfig']['tableName'], tableObject=table)
     currentVolumes = defaultVolumes # setup the default gains
@@ -88,16 +93,21 @@ if __name__ == "__main__":
     # start processes and threads
     dataAnalyserProcess = Process(target=dataAnalyser.run, args=(fileSystemToDataAnalysisQ, networkingOutQ), daemon=True)
     maintletHTTPServerProcess = Process(target=MaintletHTTPServer.run, daemon=True)
-    dataCollectorThread = threading.Thread(target = dataCollectionManager.run, daemon=True)
     fileSystemManagerThread = threading.Thread(target = fileSystemManager.run, daemon=True)
     networkSendingThread = threading.Thread(target = networkManager.sendMessageLoop, daemon=True)
     networkReceivingThread = threading.Thread(target = networkManager.receiveMessageLoop, daemon=True)
     dataAnalyserProcess.start()
     maintletHTTPServerProcess.start()
-    dataCollectorThread.start()
     fileSystemManagerThread.start()
     networkSendingThread.start()
     networkReceivingThread.start()
+
+    # set process priority
+    process = psutil.Process()
+    process.cpu_affinity([3])
+    os.system("sudo renice -n -19 -p " + str(pid))
+    dataCollectorThread = threading.Thread(target = dataCollectionManager.run, daemon=True)
+    dataCollectorThread.start()
     
     try:
         while True:

@@ -12,7 +12,7 @@
 
 import cv2
 import os
-from MaintletConfig import experimentConfig, pathNameConfig, recordingConfig, deviceHeader, WiFiIP, HTTPPort, alertSystemURL, safezoneDuration, trainDuration, MessageType, when2Alert, alertSystemEnable
+from MaintletConfig import experimentConfig, pathNameConfig, recordingConfig, deviceHeader, WiFiIP, HTTPPort, alertSystemURL, safezoneDuration, trainDuration, MessageType, when2Alert, alertSystemEnable, sendFileAnyway
 from MaintletLog import logger
 import numpy as np
 import scipy.io.wavfile as wav
@@ -25,6 +25,8 @@ from matplotlib.patches import Rectangle
 from MaintletNetworkManager import MaintletPayload
 from MaintletGainControl import gainControl, channelNames
 import requests
+import pyprctl
+import psutil
 
 
 ###############################
@@ -390,6 +392,13 @@ class MaintletDataAnalysis:
         return filename.split(':')[0][:-3]
 
     def run(self, fileSystemToDataAnalysisQ, networkingOutQ):
+
+        # assign cpu
+        process = psutil.Process()
+        process.cpu_affinity([0])
+
+        pyprctl.set_name("DataAnalysis")
+
         try:
             while True:
                 filePath = fileSystemToDataAnalysisQ.get() # if there is no new file, we will block here
@@ -481,7 +490,7 @@ class MaintletDataAnalysis:
 
 
 
-        if label == 1:
+        if label == 1 or sendFileAnyway:
             messageType  = MessageType.ALERTTRACKING 
             payload['filePath'] = filePath 
             payload = MaintletPayload(topic=messageType.value, format='dict_wavFile', payload=payload)
