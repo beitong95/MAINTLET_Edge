@@ -152,7 +152,6 @@ Mid   : {str(mid)}""")
             try:
                 while True:
                     payload = networkingOutQ.get()
-                    print("{payload['type']} !!!!!!!!!!!")
                     if type(payload) == dict and payload['type'] == MessageType.ALERT:
                         # to Janam Alert System
                         # this is a little bit different to MQTT interface

@@ -94,6 +94,7 @@ class MaintletDataAnalysis:
         self.rawDataToPlot = ''
         self.spectrogramToPlot = ''
         self.channel = 0
+        self.basic_info_channels = range(6)
         # for plots
         if isPlot:
             self.means_x = []
@@ -109,7 +110,7 @@ class MaintletDataAnalysis:
         data, _ = librosa.load(filePath, sr=sr, mono=False)
         dataCh1 = data[self.channel, :]
         self.rawDataToPlot = dataCh1
-        return dataCh1    
+        return dataCh1, data    
 
     def _setReferenceData(self, data):
         testDataCh1 = data
@@ -344,6 +345,19 @@ class MaintletDataAnalysis:
         # send these data to network handler
         logger.info(f"std = {std}, range = {range}")
         return std, range, absMax, rms
+    
+    def _basicAnalysis_on_all_channels(self, data):
+        res = {}
+        for i in self.basic_info_channels:
+            d = data[i,:]
+            std = np.std(d)
+            range = np.ptp(d)
+            rms = np.sqrt(np.mean(d**2))
+            res[str(i)] = {
+                    "std": str(round(std,3)),
+                    "range": str(round(range,3)),
+                    "rms": str(round(rms,3))}
+        return res
 
 
     def plot(self):
@@ -404,9 +418,10 @@ class MaintletDataAnalysis:
             while True:
                 filePath = fileSystemToDataAnalysisQ.get() # if there is no new file, we will block here
                 self.counter += 1
-                data = self._loadData(filePath=filePath)
+                data, all_channel_data  = self._loadData(filePath=filePath)
                 # get some basic analysis results
                 std, range, absMax, rms = self._basicAnalysis(data=data)
+                all_channel_info = self._basicAnalysis_on_all_channels(data=all_channel_data)
                 # gain control
                 #channelName = channelNames[0]
                 #gainControl(absMax, channelName)
@@ -422,24 +437,24 @@ class MaintletDataAnalysis:
                                 payload = self.prepareAlertPayload()
                                 networkingOutQ.put(payload)
 
-                        payload = self.preparePayload(std=std, rms=rms, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                        payload = self.preparePayload(std=std, rms=rms, all_channel_info = all_channel_info, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
                     else:
                         # simulation
                         if self.counter < when2Alert:
                             label = 0
-                            payload = self.preparePayload(std=std, rms=rms, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                            payload = self.preparePayload(std=std, rms=rms, all_channel_info = all_channel_info, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
                         elif self.counter == when2Alert:
                             if alertSystemEnable:
                                 payload = self.prepareAlertPayload()
                                 networkingOutQ.put(payload)
                             label = 1
-                            payload = self.preparePayload(std=std, rms=rms, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                            payload = self.preparePayload(std=std, rms=rms, all_channel_info = all_channel_info, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
                         elif self.counter < when2Alert + 5:
                             label = 1
-                            payload = self.preparePayload(std=std, rms=rms, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                            payload = self.preparePayload(std=std, rms=rms, all_channel_info = all_channel_info, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
                         else:
                             label = 0
-                            payload = self.preparePayload(std=std, rms=rms, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
+                            payload = self.preparePayload(std=std, rms=rms, all_channel_info = all_channel_info, _range=range, anomalyScore=anomalyScore, label = label, isBuildSafezone = isBuildSafezone, filePath=filePath, tt = tt, sensor=self.channel)
 
                     networkingOutQ.put(payload)
         except KeyboardInterrupt:
@@ -473,7 +488,7 @@ class MaintletDataAnalysis:
         payload['filesInfo'] = alertFiles
         return payload
     
-    def preparePayload(self, std, rms, _range, anomalyScore, label, isBuildSafezone, filePath = "", tt = "", sensor = 0):
+    def preparePayload(self, std, rms, all_channel_info, _range, anomalyScore, label, isBuildSafezone, filePath = "", tt = "", sensor = 0):
         """ we load everything here """
         payload= {}
         payload['std'] = str(round(std,3))
@@ -486,6 +501,7 @@ class MaintletDataAnalysis:
         payload['pump'] = deviceHeader['pumpModel'] # as pump id
         payload['isTest'] = (self.state == as_state_test)
         payload['rms'] = str(round(rms,3))
+        payload['all_channel_info'] = all_channel_info
 
         # other algorithm results
 
